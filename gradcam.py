@@ -7,15 +7,48 @@ import gc
 # 🔹 Preprocesamiento
 # ============================================================
 
+def remove_background(img_rgb, threshold=240):
+    """
+    Elimina el fondo blanco de la imagen y lo reemplaza con negro.
+    """
+    # Convertir a escala de grises para detectar fondo blanco
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+    # Crear máscara donde píxeles claros (fondo) son 0
+    _, mask = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY_INV)
+    # Aplicar la máscara
+    result = cv2.bitwise_and(img_rgb, img_rgb, mask=mask)
+    return result
+
+
 def preprocess_bgr_to_model(img_bgr, size=224):
     """
-    Recibe imagen en BGR (OpenCV) y la transforma a tensor
-    listo para el modelo (1, size, size, 3), float32 [0,1].
+    Recibe imagen en BGR (OpenCV) y genera 3 inputs:
+    1. Imagen a color normalizada
+    2. Imagen en escala de grises (3 canales)
+    3. Imagen sin fondo (fondo blanco → negro)
+    
+    Retorna: [input_color, input_gray, input_nobg]
     """
+    # Convertir BGR a RGB
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     img_rgb = cv2.resize(img_rgb, (size, size))
-    x = img_rgb.astype(np.float32) / 255.0
-    return np.expand_dims(x, axis=0)
+    
+    # 1. Input a color
+    input_color = img_rgb.astype(np.float32) / 255.0
+    input_color = np.expand_dims(input_color, axis=0)
+    
+    # 2. Input en escala de grises (repetir en 3 canales)
+    img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+    img_gray_3ch = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2RGB)
+    input_gray = img_gray_3ch.astype(np.float32) / 255.0
+    input_gray = np.expand_dims(input_gray, axis=0)
+    
+    # 3. Input sin fondo
+    img_nobg = remove_background(img_rgb)
+    input_nobg = img_nobg.astype(np.float32) / 255.0
+    input_nobg = np.expand_dims(input_nobg, axis=0)
+    
+    return [input_color, input_gray, input_nobg]
 
 
 # ============================================================
@@ -51,9 +84,9 @@ def make_gradcam_heatmap(
 
     Parámetros:
       - model: modelo Keras.
-      - img_array: tensor (1, h, w, 3) ya preprocesado.
+      - img_array: lista de tensors [color, gray, nobg] o tensor único.
       - last_conv_layer_name: nombre de la última capa conv (opcional).
-      - class_idx_override: si no es None, usa ese índice de clase
+      - class_idx_override: si node es None, usa ese índice de clase
         en vez de la clase más probable.
 
     Retorna:
