@@ -42,11 +42,14 @@ def load_model_and_labels(species: str):
     if species in loaded:
         return loaded[species]
 
-    model_path = os.path.join(MODELS_DIR, f"{species}_model.h5")
-    labels_path = os.path.join(MODELS_DIR, f"{species}_labels.json")
+    # Capitalizar primera letra para coincidir con nombres de archivo
+    species_capitalized = species.capitalize()
+    model_path = os.path.join(MODELS_DIR, f"{species_capitalized}_model.h5")
+    labels_path = os.path.join(MODELS_DIR, f"{species_capitalized}_labels.json")
 
     if not os.path.exists(model_path) or not os.path.exists(labels_path):
         raise FileNotFoundError(f"Modelo o labels no encontrados para: {species}")
+
 
     # Cargar modelo
     model = tf.keras.models.load_model(model_path, compile=False)
