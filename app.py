@@ -120,6 +120,8 @@ def gradcam():
     file = request.files.get("image")
     target_label = request.form.get("target_label")  # 👈 opcional
 
+    print(f"🔍 Request recibido: species={species}, file={file is not None}, target_label={target_label}")
+
     if not species or not file:
         return jsonify({"error": "Parámetros requeridos: species, image"}), 400
 
@@ -173,9 +175,14 @@ def gradcam():
         release_tf_memory(model)
         return jsonify(response)
 
+
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         print("❌ Error en /gradcam:", e)
-        return jsonify({"error": str(e)}), 500
+        print("📋 Traceback completo:")
+        print(error_details)
+        return jsonify({"error": str(e), "details": error_details}), 500
 
 
 # ============================================================
