@@ -6,6 +6,8 @@ import os
 import json
 import base64
 import gc
+import hashlib
+from functools import lru_cache
 
 from flask import Flask, request, jsonify
 from PIL import Image
@@ -28,6 +30,7 @@ app = Flask(__name__)
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 loaded = {}  # Cache de modelos {species: (model, labels)}
+gradcam_cache = {}  # Cache de Grad-CAMs generados {hash: base64_image}
 
 
 # ============================================================
@@ -126,11 +129,28 @@ def gradcam():
         return jsonify({"error": "Parámetros requeridos: species, image"}), 400
 
     try:
+        # Leer los bytes de la imagen para crear hash
+        img_bytes = file.read()
+        
+        # Crear hash único para la combinación de imagen + species + target_label
+        cache_key = hashlib.md5(
+            f"{species}_{target_label}_{len(img_bytes)}".encode() + img_bytes[:1000]
+        ).hexdigest()
+        
+        # Verificar si ya está en caché
+        if cache_key in gradcam_cache:
+            print(f"✅ Grad-CAM encontrado en caché: {cache_key[:8]}...")
+            return jsonify(gradcam_cache[cache_key])
+        
+        # Si no está en caché, generar
+        print(f"🔄 Generando nuevo Grad-CAM: {cache_key[:8]}...")
+        
         # 1) Cargar modelo + labels
         model, labels = load_model_and_labels(species)
 
         # 2) Leer imagen y convertir a BGR
-        img = Image.open(file.stream).convert("RGB")
+        img = Image.open(file.stream if hasattr(file, 'stream') else file).convert("RGB")
+        file.seek(0)  # Reset file pointer
         img_bgr = np.array(img)[:, :, ::-1]  # RGB → BGR
 
         # 3) Preprocesar imagen para el modelo
@@ -171,7 +191,14 @@ def gradcam():
             "image_gradcam_b64": b64_blended,
         }
 
-        # 9) Liberar memoria (útil en Render Free)
+        # 9) Guardar en caché (limitar tamaño a 100 items)
+        if len(gradcam_cache) > 100:
+            # Eliminar el más antiguo (FIFO simple)
+            gradcam_cache.pop(next(iter(gradcam_cache)))
+        gradcam_cache[cache_key] = response
+        print(f"💾 Grad-CAM guardado en caché ({len(gradcam_cache)} items)")
+
+        # 10) Liberar memoria (útil en Render Free)
         release_tf_memory(model)
         return jsonify(response)
 
